@@ -42,6 +42,6 @@ rsync -az --info=progress2 "${RSYNC_PATH_OPT[@]}" \
   "${LOCAL_DATA_DIR}/maps/" "${SSH}:${VM_DATA_DIR}/maps/"
 
 echo "==> Fixing ownership to the container user (uid 1001)"
-ssh "${SSH}" "${CHOWN_CMD}"
+ssh -t "${SSH}" "${CHOWN_CMD}"
 
 echo "==> Done. Reload the app and the synced maps should appear."

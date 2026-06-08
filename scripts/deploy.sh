@@ -34,7 +34,9 @@ echo "==> Shipping image to ${SSH} (docker save | ssh | docker load)"
 docker save "${IMAGE}" | gzip | ssh "${SSH}" "gunzip | docker load"
 
 echo "==> Preparing remote dirs on ${SSH}"
-ssh "${SSH}" "
+# -t allocates a TTY so a sudo password prompt works (harmless if sudo is
+# passwordless or USE_SUDO is unset).
+ssh -t "${SSH}" "
   set -e
   mkdir -p '${REMOTE_DIR}'
   ${SUDO} mkdir -p '${VM_DATA_DIR}/maps'

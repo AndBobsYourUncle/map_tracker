@@ -813,12 +813,15 @@ export default function MapTracker({
       let activePopup: maplibregl.Popup | null = null;
 
       // Below this zoom the map is too far out for an open popup to make sense
-      // (it floats over a tiny patch), so we hide it until the user zooms back
-      // in. A couple levels below the deepest zoom, but never below near-min.
+      // (it floats over a tiny patch), so on mobile we hide it until the user
+      // zooms back in. A couple levels below the deepest zoom, but never below
+      // near-min. Desktop has the room, so it's left visible there.
       const popupHideBelow = Math.max(map.getMinZoom() + 1, map.getMaxZoom() - 3);
       const syncPopupVisibility = () => {
         const el = activePopup?.getElement();
-        if (el) el.style.visibility = map.getZoom() < popupHideBelow ? "hidden" : "";
+        if (!el) return;
+        const isMobile = window.matchMedia("(max-width: 768px)").matches;
+        el.style.visibility = isMobile && map.getZoom() < popupHideBelow ? "hidden" : "";
       };
 
       // Draw lines from `loc` to each marker its description references (or clear

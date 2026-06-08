@@ -1,0 +1,197 @@
+.main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+  color: #e7e5ea;
+}
+
+.heading {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 28px;
+}
+
+.empty {
+  color: #9b95a8;
+  font-size: 14px;
+}
+.code {
+  background: #241f30;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Add-a-map import form + progress */
+.addMap {
+  margin-bottom: 36px;
+}
+.addForm {
+  display: flex;
+  gap: 8px;
+}
+.addInput {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  font-size: 14px;
+  color: #e7e5ea;
+  background: #1c1926;
+  border: 1px solid #2c2838;
+  border-radius: 8px;
+  outline: none;
+}
+.addInput:focus {
+  border-color: #6c5ce7;
+}
+.addInput:disabled {
+  opacity: 0.6;
+}
+.addBtn {
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: #6c5ce7;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.addBtn:hover:not(:disabled) {
+  background: #7d6df0;
+}
+.addBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.addError {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #ff8a8a;
+}
+.ingest {
+  margin-top: 12px;
+}
+.ingestLine {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: #9b95a8;
+  margin-bottom: 5px;
+}
+.ingestCount {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ingestBar {
+  height: 6px;
+  border-radius: 3px;
+  background: #2c2838;
+  overflow: hidden;
+}
+.ingestBarFill {
+  height: 100%;
+  background: #6c5ce7;
+  transition: width 0.3s ease;
+}
+
+.section {
+  margin-bottom: 32px;
+  scroll-margin-top: 24px;
+}
+
+.gameTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: #c5c0d0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-bottom: 8px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #2c2838;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+/* When navigated to via /#<game-slug>, highlight the focused section. */
+.section:target .gameTitle {
+  color: #a99bff;
+  border-color: #6c5ce7;
+}
+
+.grid {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+/* A lone map spans the full width rather than sitting in a half-width column. */
+.gridSingle {
+  grid-template-columns: 1fr;
+}
+
+.card {
+  display: block;
+  padding: 14px 16px;
+  background: #1c1926;
+  border: 1px solid #2c2838;
+  border-radius: 8px;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.card:hover {
+  background: #221d30;
+  border-color: #3a3550;
+}
+
+.cardTop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.mapTitle {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.markers {
+  font-size: 11px;
+  color: #9b95a8;
+  white-space: nowrap;
+}
+
+.progressRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: #9b95a8;
+  margin-bottom: 5px;
+}
+
+.done {
+  color: #4caf80;
+  font-weight: 600;
+}
+
+.untrackedNote {
+  font-size: 11px;
+  color: #6f6980;
+  white-space: nowrap;
+}
+
+.bar {
+  height: 6px;
+  border-radius: 3px;
+  background: #2c2838;
+  overflow: hidden;
+}
+.barFill {
+  height: 100%;
+  background: #6c5ce7;
+  transition: width 0.2s ease;
+}

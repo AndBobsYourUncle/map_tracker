@@ -1,0 +1,15 @@
+# Runs on the Debian VM. The image is loaded by scripts/deploy.sh (docker load);
+# map data persists in a host directory bind-mounted at /data, untouched by
+# re-deploys. Serve on :3000 (front with a reverse proxy later if desired).
+services:
+  map-tracker:
+    image: map-tracker:latest
+    container_name: map-tracker
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      MAP_TRACKER_DATA_DIR: /data
+    volumes:
+      # Host path is set by deploy.sh via a sibling .env (MAP_TRACKER_HOST_DATA).
+      - ${MAP_TRACKER_HOST_DATA:-/var/lib/map-tracker}:/data

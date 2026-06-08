@@ -1,0 +1,23 @@
+# Build context excludes — keep the image small and the build deterministic.
+node_modules
+.next
+out
+
+# Runtime map data is huge (tiles/media) and belongs on the /data volume,
+# never in the image.
+data
+public/maps
+
+# VCS / local / editor cruft
+.git
+.gitignore
+*.log
+.DS_Store
+
+# Deploy config (machine-specific, may hold secrets)
+deploy.env
+
+# Plans / docs not needed at build
+*.md
+
+.claude

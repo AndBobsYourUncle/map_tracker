@@ -1,0 +1,616 @@
+.shell {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  color: #e7e5ea;
+  background: #14121b;
+}
+
+.sidebar {
+  width: 320px;
+  flex-shrink: 0;
+  height: 100%;
+  overflow-y: auto;
+  background: #1c1926;
+  border-right: 1px solid #2c2838;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebarHeader {
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid #2c2838;
+  position: sticky;
+  top: 0;
+  background: #1c1926;
+  z-index: 1;
+}
+
+.sidebarHeader h1 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 1px;
+}
+
+.gameLink {
+  color: inherit;
+  text-decoration: none;
+}
+.gameLink:hover {
+  color: #a99bff;
+}
+
+.sidebarHeader .mapName {
+  font-size: 13px;
+  font-weight: 600;
+  color: #c5c0d0;
+  margin-bottom: 2px;
+}
+
+.sidebarHeader p {
+  font-size: 12px;
+  color: #9b95a8;
+}
+
+.totalProgress {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #9b95a8;
+}
+
+/* Top-level "hide completed" switch in the sidebar header. */
+.optionToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: #c5c0d0;
+  font-size: 12px;
+  cursor: pointer;
+}
+.optionToggle:hover {
+  color: #e7e5ea;
+}
+
+.switch {
+  width: 28px;
+  height: 16px;
+  border-radius: 8px;
+  background: #2c2838;
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #8a8498;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.switch.switchOn {
+  background: #6c5ce7;
+}
+.switch.switchOn::after {
+  transform: translateX(12px);
+  background: #fff;
+}
+
+.bar {
+  height: 6px;
+  border-radius: 3px;
+  background: #2c2838;
+  margin-top: 5px;
+  overflow: hidden;
+}
+
+/* Marker search box. */
+.searchInput {
+  margin-top: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  font-size: 13px;
+  color: #e7e5ea;
+  background: #14121b;
+  border: 1px solid #2c2838;
+  border-radius: 6px;
+  outline: none;
+}
+.searchInput:focus {
+  border-color: #6c5ce7;
+}
+.searchInput::placeholder {
+  color: #6f6980;
+}
+
+.noResults {
+  padding: 16px 18px;
+  font-size: 13px;
+  color: #9b95a8;
+}
+
+.barFill {
+  height: 100%;
+  background: #6c5ce7;
+  transition: width 0.2s ease;
+}
+
+.group {
+  border-bottom: 1px solid #241f30;
+  padding: 6px 0;
+}
+
+.groupTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #c5c0d0;
+}
+
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.iconChip {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.iconChip :global(svg) {
+  width: 13px;
+  height: 13px;
+  display: block;
+}
+
+.category {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 18px 6px 26px;
+  font-size: 13px;
+  user-select: none;
+}
+
+.category:hover {
+  background: #241f30;
+}
+
+.groupName {
+  flex: 1;
+}
+
+.chevron {
+  background: none;
+  border: none;
+  padding: 0;
+  width: 12px;
+  flex-shrink: 0;
+  cursor: pointer;
+  color: #8a8498;
+  font-size: 10px;
+  line-height: 1;
+  text-align: center;
+}
+.chevron:hover {
+  color: #e7e5ea;
+}
+
+/* Region drill-down: category sub-rows and individual marker rows. */
+.subCat {
+  padding-left: 34px;
+}
+.markerRow {
+  padding-left: 52px;
+  font-size: 12px;
+  color: #b4afc0;
+}
+
+/* The two per-row toggles (progress star + show/hide eye), grouped together. */
+.rowControls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.eyeBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: #c5c0d0;
+  display: inline-flex;
+  align-items: center;
+}
+.eyeBtn:hover {
+  color: #fff;
+}
+.eyeBtn.eyeOff {
+  color: #5a5668;
+}
+/* Some-but-not-all markers visible. */
+.eyeBtn.eyePartial {
+  color: #6f6980;
+}
+.eyeBtn svg {
+  display: block;
+}
+
+.catTitle {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Region sub-header that groups marker rows within a category. */
+.regionSubhead {
+  padding: 5px 18px 2px 40px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #8a8498;
+}
+
+/* Completion toggle: empty circle (none), dash (partial), green check (all). */
+.checkBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: #4a4658;
+  display: inline-flex;
+  align-items: center;
+}
+.checkBtn:hover {
+  color: #c5c0d0;
+}
+.checkBtn svg {
+  display: block;
+}
+.checkBtn.checkPartial {
+  color: #9b95a8;
+}
+.checkBtn.checkAll {
+  color: #4caf80;
+}
+.checkBtn.checkAll:hover {
+  color: #5fcf98;
+}
+
+/* A fully-completed section reads green; a finished individual marker is
+   struck through so the eye skims past what's already done. */
+.complete > .catTitle {
+  color: #4caf80;
+}
+.category.complete {
+  background: rgba(76, 175, 128, 0.06);
+}
+.markerRow.complete > .catTitle {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.catCount {
+  font-size: 11px;
+  color: #8a8498;
+  font-variant-numeric: tabular-nums;
+}
+
+.catCount.done {
+  color: #4caf80;
+}
+
+/* Star toggle: whether a category counts toward progress (separate from the
+   show/hide checkbox). */
+.trackStar {
+  background: none;
+  border: none;
+  padding: 0 2px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  color: #4a4658;
+  flex-shrink: 0;
+}
+.trackStar:hover {
+  color: #c5c0d0;
+}
+.trackStar.tracked {
+  color: #f5c542;
+}
+/* Some-but-not-all markers counted. */
+.trackStar.trackedPartial {
+  color: rgba(245, 197, 66, 0.5);
+}
+
+/* Categories excluded from progress read dimmer in the list. */
+.untracked .catTitle,
+.untracked .catCount {
+  opacity: 0.5;
+}
+
+.mapWrap {
+  flex: 1;
+  position: relative;
+  height: 100%;
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+}
+
+.loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9b95a8;
+  font-size: 14px;
+}
+
+/* Popup styling overrides */
+:global(.maplibregl-popup-content) {
+  background: #1c1926;
+  color: #e7e5ea;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  max-width: 500px;
+}
+
+:global(.maplibregl-popup-anchor-top .maplibregl-popup-tip) {
+  border-bottom-color: #1c1926;
+}
+:global(.maplibregl-popup-anchor-bottom .maplibregl-popup-tip) {
+  border-top-color: #1c1926;
+}
+:global(.maplibregl-popup-anchor-left .maplibregl-popup-tip) {
+  border-right-color: #1c1926;
+}
+:global(.maplibregl-popup-anchor-right .maplibregl-popup-tip) {
+  border-left-color: #1c1926;
+}
+:global(.maplibregl-popup-close-button) {
+  color: #9b95a8;
+  font-size: 18px;
+  padding: 0 6px;
+}
+
+.popupHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.popupIcon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+.popupIcon :global(svg) {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+.popupTitle {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.popupCat {
+  font-size: 11px;
+  color: #9b95a8;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.popupRegion {
+  background: #2c2838;
+  color: #c5c0d0;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.popupRegion:hover {
+  background: #6c5ce7;
+  color: #fff;
+}
+
+/* The popup image is a button so it can open the fullscreen lightbox. */
+.popupImgBtn {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  position: relative;
+  margin-bottom: 8px;
+  cursor: zoom-in;
+}
+
+.popupImg {
+  width: 100%;
+  border-radius: 6px;
+  display: block;
+}
+
+/* Little expand glyph in the corner that hints the image is clickable. */
+.popupImgExpand {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  background: rgba(12, 10, 18, 0.65);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.85;
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+.popupImgExpand svg {
+  display: block;
+}
+.popupImgBtn:hover .popupImgExpand {
+  opacity: 1;
+  background: rgba(12, 10, 18, 0.9);
+}
+
+/* Fullscreen image lightbox. */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+.lightboxImg {
+  max-width: 92vw;
+  max-height: 92vh;
+  border-radius: 8px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+  cursor: default;
+}
+.lightboxClose {
+  position: fixed;
+  top: 16px;
+  right: 20px;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(28, 25, 38, 0.85);
+  color: #fff;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+.lightboxClose:hover {
+  background: rgba(28, 25, 38, 1);
+}
+
+.popupDesc {
+  font-size: 12px;
+  color: #c5c0d0;
+  margin-bottom: 10px;
+  line-height: 1.4;
+  /* Size to the content so bullet lines aren't force-wrapped, but cap the
+     width; long descriptions (e.g. lore checklists) then scroll vertically
+     inside the popup instead of growing it off-screen. */
+  width: max-content;
+  max-width: 460px;
+  max-height: 280px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+.popupDesc::-webkit-scrollbar {
+  width: 8px;
+}
+.popupDesc::-webkit-scrollbar-thumb {
+  background: #3a3548;
+  border-radius: 4px;
+}
+.popupDesc::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.popupPara {
+  margin: 0 0 6px;
+}
+.popupPara:last-child {
+  margin-bottom: 0;
+}
+
+.popupList {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+.popupList:last-child {
+  margin-bottom: 0;
+}
+.popupList li {
+  margin: 2px 0;
+  white-space: nowrap;
+}
+
+.popupDesc strong {
+  color: #e7e5ea;
+  font-weight: 600;
+}
+.popupDesc em {
+  font-style: italic;
+}
+
+.popupLink {
+  color: #a99bff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.popupLink:hover {
+  color: #c7bdff;
+}
+
+.popupBtn {
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: #6c5ce7;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.popupBtn.checked {
+  background: #2c2838;
+  color: #4caf80;
+}

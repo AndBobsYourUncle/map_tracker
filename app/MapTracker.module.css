@@ -759,4 +759,57 @@
   .lightbox {
     padding: 16px;
   }
+
+  /* Bigger tap targets: the icon buttons are ~15px on desktop (fine with a
+     mouse) but far too small to tap reliably. Grow the icons and give each a
+     tall (40px) hit area, but keep them narrow + flush so they don't steal
+     horizontal room from the marker name. */
+  .eyeBtn,
+  .checkBtn,
+  .trackStar,
+  .chevron {
+    min-width: 32px;
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .eyeBtn svg,
+  .checkBtn svg {
+    width: 22px;
+    height: 22px;
+  }
+  .trackStar {
+    font-size: 21px;
+    padding: 0;
+  }
+  .chevron {
+    width: 28px;
+    min-width: 28px;
+    font-size: 13px;
+  }
+  /* The buttons already carry their own width, so no extra gap between them. */
+  .rowControls {
+    gap: 0;
+  }
+  /* The 40px-tall buttons already set the row height, so keep vertical padding
+     minimal (otherwise rows get needlessly tall). Trim side padding so titles
+     get the reclaimed width. */
+  .category {
+    padding: 1px 8px 1px 14px;
+    gap: 4px;
+  }
+  /* Shallower drill-down indentation than desktop (narrow screen). */
+  .subCat {
+    padding-left: 18px;
+  }
+  .markerRow {
+    padding-left: 30px;
+  }
+
+  /* The "hide completed" switch row — easier to hit. */
+  .optionToggle {
+    padding: 10px 0;
+    font-size: 14px;
+  }
 }

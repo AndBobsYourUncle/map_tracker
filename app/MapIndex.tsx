@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import ProfileSwitcher from "./ProfileSwitcher";
 import styles from "./MapIndex.module.css";
 
 export interface MapEntry {
@@ -186,7 +187,13 @@ export default function MapIndex({ games }: { games: GameGroup[] }) {
 
   return (
     <main className={styles.main}>
-      <h1 className={styles.heading}>Map Tracker</h1>
+      <div className={styles.headerRow}>
+        <h1 className={styles.heading}>Map Tracker</h1>
+        {/* Pick the device's sync profile here too; it applies to every map. */}
+        <div className={styles.profilePicker}>
+          <ProfileSwitcher />
+        </div>
+      </div>
 
       <AddMap />
 

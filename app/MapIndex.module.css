@@ -5,10 +5,23 @@
   color: #e7e5ea;
 }
 
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 28px;
+}
+
 .heading {
   font-size: 22px;
   font-weight: 700;
-  margin-bottom: 28px;
+}
+
+.profilePicker {
+  min-width: 200px;
+  flex: 0 1 280px;
 }
 
 .empty {

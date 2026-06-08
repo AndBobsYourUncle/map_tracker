@@ -6,6 +6,13 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { installDecodeDebug, attachMapErrorLogger } from "./mapDebug";
 import type { MapData, MapLocation } from "@/lib/types";
 import markerIcons from "@/lib/marker-icons.json";
+import {
+  getSelectedProfile,
+  LOCAL_PROFILE,
+  onProfileChange,
+} from "@/lib/profile";
+import type { MapStateSnapshot, SyncOp } from "@/lib/syncTypes";
+import ProfileSwitcher, { type SyncStatus } from "./ProfileSwitcher";
 import styles from "./MapTracker.module.css";
 
 const SOURCE_ID = "locations";
@@ -174,6 +181,32 @@ export default function MapTracker({
   const [search, setSearch] = useState("");
   // Source of the fullscreen image lightbox, or null when closed.
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  // Mobile only: whether the sidebar drawer is open. On desktop the sidebar is
+  // always visible and this flag is ignored (see the CSS media query).
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // ── Multi-device sync ──────────────────────────────────────────────────
+  // The selected sync profile (sticky per device). "local" = today's
+  // localStorage-only behavior; any other value is a server profile id whose
+  // state syncs live over SSE.
+  const [profileId, setProfileId] = useState<string>(LOCAL_PROFILE);
+  const synced = profileId !== LOCAL_PROFILE;
+  // Per-tab id so the server can avoid echoing our own ops back to us.
+  const clientIdRef = useRef<string | null>(null);
+  if (clientIdRef.current == null) clientIdRef.current = crypto.randomUUID();
+  // Live connection state, surfaced as a calm dot in the profile switcher.
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("connecting");
+  // Mirrors of the hidden/untracked sets (like checkedRef) so persistence can
+  // read the just-updated value synchronously, before setState has flushed.
+  const hiddenLocsRef = useRef<Set<number>>(new Set());
+  const untrackedLocsRef = useRef<Set<number>>(new Set());
+  // Stable handle to the current commit(); the once-created map-click closures
+  // (toggleChecked/setManyChecked refs) call through this to reach live state.
+  const commitRef = useRef<(op: SyncOp) => void>(() => {});
+  // Ops whose PATCH failed (offline); flushed in order on reconnect.
+  const pendingOpsRef = useRef<SyncOp[]>([]);
+  // One-time prompt to import this device's local progress into a fresh profile.
+  const [importPrompt, setImportPrompt] = useState(false);
 
   // Close the lightbox on Escape while it's open.
   useEffect(() => {
@@ -257,14 +290,38 @@ export default function MapTracker({
   const untrackedLocsKey = `map-tracker:${game}:${mapSlug}:untrackedLocs`;
   const hideCompletedKey = `map-tracker:${game}:${mapSlug}:hideCompleted`;
 
-  // Load persisted preferences (client-only to avoid a hydration mismatch).
+  // Hydrate from localStorage in LOCAL mode (client-only to avoid a hydration
+  // mismatch). Synced profiles hydrate from the SSE snapshot instead — see the
+  // sync effect below. Also re-runs when switching back to local.
+  /* eslint-disable react-hooks/set-state-in-effect -- hydrating an external
+     store (localStorage) into state on mount is the intended use here. */
   useEffect(() => {
+    if (synced) return;
     const hidden = loadIdSet(hiddenLocsKey);
+    hiddenLocsRef.current = hidden;
     setHiddenLocs(hidden);
-    setUntrackedLocs(loadIdSet(untrackedLocsKey));
+    const untracked = loadIdSet(untrackedLocsKey);
+    untrackedLocsRef.current = untracked;
+    setUntrackedLocs(untracked);
     const hc = window.localStorage.getItem(hideCompletedKey) === "1";
-    setHideCompleted(hc);
     hideCompletedRef.current = hc;
+    setHideCompleted(hc);
+
+    // Checked: repaint the diff against whatever the map currently shows (covers
+    // a profile switch while the map is live), then adopt the loaded set.
+    const next = loadIdSet(storageKey);
+    const map = mapRef.current;
+    if (map) {
+      for (const id of checkedRef.current) {
+        if (!next.has(id)) map.setFeatureState({ source: SOURCE_ID, id }, { checked: false });
+      }
+      for (const id of next) {
+        if (!checkedRef.current.has(id)) map.setFeatureState({ source: SOURCE_ID, id }, { checked: true });
+      }
+    }
+    checkedRef.current = next;
+    setChecked(next);
+
     // Start any group whose markers are entirely hidden collapsed.
     const collapsed = new Set<number>();
     for (const g of data.groups) {
@@ -274,55 +331,197 @@ export default function MapTracker({
       if (ids.length > 0 && ids.every((id) => hidden.has(id))) collapsed.add(g.id);
     }
     setCollapsedGroups(collapsed);
-  }, [hiddenLocsKey, untrackedLocsKey, hideCompletedKey, data, locationsByCat]);
+  }, [synced, storageKey, hiddenLocsKey, untrackedLocsKey, hideCompletedKey, data, locationsByCat]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
-  function updateHideCompleted(value: boolean) {
-    setHideCompleted(value);
+  // ── Apply cores ─────────────────────────────────────────────────────────
+  // Each mutates React state + refs + the map, but does NOT persist. Public
+  // actions call an apply core then commit(); incoming SSE ops call only the
+  // apply core (no echo back to the server).
+
+  // Repaint only the markers whose checked-state changed between two sets.
+  function paintCheckedDiff(prev: Set<number>, next: Set<number>) {
+    const map = mapRef.current;
+    if (!map) return;
+    for (const id of prev) {
+      if (!next.has(id)) map.setFeatureState({ source: SOURCE_ID, id }, { checked: false });
+    }
+    for (const id of next) {
+      if (!prev.has(id)) map.setFeatureState({ source: SOURCE_ID, id }, { checked: true });
+    }
+  }
+
+  function applyCheckedOp(ids: number[], value: boolean) {
+    const next = new Set(checkedRef.current);
+    for (const id of ids) {
+      if (value) next.add(id);
+      else next.delete(id);
+      mapRef.current?.setFeatureState({ source: SOURCE_ID, id }, { checked: value });
+    }
+    checkedRef.current = next;
+    setChecked(next);
+    const sync = popupSyncRef.current;
+    if (sync && ids.includes(sync.id)) sync.render(value);
+  }
+
+  function applyHiddenOp(ids: number[], hidden: boolean) {
+    const next = new Set(hiddenLocsRef.current);
+    ids.forEach((id) => (hidden ? next.add(id) : next.delete(id)));
+    hiddenLocsRef.current = next;
+    setHiddenLocs(next);
+  }
+
+  function applyUntrackedOp(ids: number[], untracked: boolean) {
+    const next = new Set(untrackedLocsRef.current);
+    ids.forEach((id) => (untracked ? next.add(id) : next.delete(id)));
+    untrackedLocsRef.current = next;
+    setUntrackedLocs(next);
+  }
+
+  function applyHideCompletedLocal(value: boolean) {
     hideCompletedRef.current = value;
-    window.localStorage.setItem(hideCompletedKey, value ? "1" : "0");
+    setHideCompleted(value);
   }
 
-  // setState wrappers that persist the result to localStorage.
-  function updateHiddenLocs(updater: (prev: Set<number>) => Set<number>) {
-    setHiddenLocs((prev) => {
-      const next = updater(new Set(prev));
-      saveIdSet(hiddenLocsKey, next);
-      return next;
-    });
+  // Apply an op received over SSE (from another device) without re-sending it.
+  function applyOpLocal(op: SyncOp) {
+    if (op.kind === "hideCompleted") applyHideCompletedLocal(op.value);
+    else if (op.kind === "checked") applyCheckedOp(op.ids, op.action === "add");
+    else if (op.kind === "hidden") applyHiddenOp(op.ids, op.action === "add");
+    else if (op.kind === "untracked") applyUntrackedOp(op.ids, op.action === "add");
   }
 
-  function updateUntrackedLocs(updater: (prev: Set<number>) => Set<number>) {
-    setUntrackedLocs((prev) => {
-      const next = updater(new Set(prev));
-      saveIdSet(untrackedLocsKey, next);
-      return next;
-    });
+  // Replace all four fields from a server snapshot (initial load / reconnect).
+  function applySnapshot(snap: MapStateSnapshot) {
+    const nextChecked = new Set(snap.checked);
+    paintCheckedDiff(checkedRef.current, nextChecked);
+    checkedRef.current = nextChecked;
+    setChecked(nextChecked);
+    hiddenLocsRef.current = new Set(snap.hiddenLocs);
+    setHiddenLocs(hiddenLocsRef.current);
+    untrackedLocsRef.current = new Set(snap.untrackedLocs);
+    setUntrackedLocs(untrackedLocsRef.current);
+    applyHideCompletedLocal(snap.hideCompleted);
+    const sync = popupSyncRef.current;
+    if (sync) sync.render(nextChecked.has(sync.id));
   }
 
-  // Per-marker toggles + bulk helpers (category/group/region act over many ids).
+  // ── Persistence ───────────────────────────────────────────────────────────
+  // In local mode an op re-saves the affected set/bool to localStorage. In
+  // synced mode it's PATCHed to the server, which broadcasts it to other devices.
+  function commit(op: SyncOp) {
+    if (synced) {
+      void sendOp(op);
+      return;
+    }
+    switch (op.kind) {
+      case "checked":
+        saveIdSet(storageKey, checkedRef.current);
+        break;
+      case "hidden":
+        saveIdSet(hiddenLocsKey, hiddenLocsRef.current);
+        break;
+      case "untracked":
+        saveIdSet(untrackedLocsKey, untrackedLocsRef.current);
+        break;
+      case "hideCompleted":
+        window.localStorage.setItem(hideCompletedKey, op.value ? "1" : "0");
+        break;
+    }
+  }
+  // Keep the stable handle current (the map-click closures call through it).
+  useEffect(() => {
+    commitRef.current = commit;
+  });
+
+  async function sendOp(op: SyncOp) {
+    try {
+      const res = await fetch(`/api/profiles/${profileId}/maps/${game}/${mapSlug}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: clientIdRef.current, op }),
+      });
+      if (!res.ok) throw new Error(`PATCH ${res.status}`);
+    } catch {
+      // Buffer for replay on reconnect; the UI already reflects the change.
+      pendingOpsRef.current.push(op);
+      if (pendingOpsRef.current.length > 1000) pendingOpsRef.current.shift();
+      setSyncStatus("offline");
+    }
+  }
+
+  async function flushPending() {
+    if (pendingOpsRef.current.length === 0) return;
+    const queue = pendingOpsRef.current;
+    pendingOpsRef.current = [];
+    for (const op of queue) await sendOp(op);
+  }
+
+  // ── One-time localStorage → profile import ──────────────────────────────
+  function localHasProgress(): boolean {
+    return (
+      loadIdSet(storageKey).size > 0 ||
+      loadIdSet(hiddenLocsKey).size > 0 ||
+      loadIdSet(untrackedLocsKey).size > 0 ||
+      window.localStorage.getItem(hideCompletedKey) === "1"
+    );
+  }
+  function importDismissKey(): string {
+    return `map-tracker:importDismissed:${profileId}:${game}:${mapSlug}`;
+  }
+  // Offer to import only when the profile is brand new (rev 0) for this map and
+  // this device actually has local progress to bring over.
+  function maybeOfferImport(snap: MapStateSnapshot) {
+    if (snap.rev !== 0) return;
+    if (!localHasProgress()) return;
+    if (window.localStorage.getItem(importDismissKey()) === "1") return;
+    setImportPrompt(true);
+  }
+  async function importLocalProgress() {
+    try {
+      await fetch(`/api/profiles/${profileId}/maps/${game}/${mapSlug}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          checked: [...loadIdSet(storageKey)],
+          hiddenLocs: [...loadIdSet(hiddenLocsKey)],
+          untrackedLocs: [...loadIdSet(untrackedLocsKey)],
+          hideCompleted: window.localStorage.getItem(hideCompletedKey) === "1",
+        }),
+      });
+      // The server broadcasts a snapshot; our own SSE applies it.
+    } finally {
+      setImportPrompt(false);
+    }
+  }
+  function dismissImport() {
+    window.localStorage.setItem(importDismissKey(), "1");
+    setImportPrompt(false);
+  }
+
+  // ── Public actions (called by the sidebar/popup UI) ────────────────────────
+  function updateHideCompleted(value: boolean) {
+    applyHideCompletedLocal(value);
+    commit({ kind: "hideCompleted", value });
+  }
   function toggleLocHidden(id: number) {
-    updateHiddenLocs((next) => {
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+    const hidden = !hiddenLocsRef.current.has(id);
+    applyHiddenOp([id], hidden);
+    commit({ kind: "hidden", action: hidden ? "add" : "remove", ids: [id] });
   }
   function setManyHidden(ids: number[], hidden: boolean) {
-    updateHiddenLocs((next) => {
-      ids.forEach((id) => (hidden ? next.add(id) : next.delete(id)));
-      return next;
-    });
+    applyHiddenOp(ids, hidden);
+    commit({ kind: "hidden", action: hidden ? "add" : "remove", ids });
   }
   function toggleLocTracked(id: number) {
-    updateUntrackedLocs((next) => {
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+    // The set stores EXCLUDED markers, so toggling membership flips tracking.
+    const untracked = !untrackedLocsRef.current.has(id);
+    applyUntrackedOp([id], untracked);
+    commit({ kind: "untracked", action: untracked ? "add" : "remove", ids: [id] });
   }
   function setManyTracked(ids: number[], tracked: boolean) {
-    updateUntrackedLocs((next) => {
-      ids.forEach((id) => (tracked ? next.delete(id) : next.add(id)));
-      return next;
-    });
+    applyUntrackedOp(ids, !tracked);
+    commit({ kind: "untracked", action: tracked ? "remove" : "add", ids });
   }
 
   // Membership coverage of `ids` within `set`, expressed for visibility/tracking
@@ -349,13 +548,14 @@ export default function MapTracker({
     else next.delete(id);
     checkedRef.current = next;
     setChecked(next);
-    saveIdSet(storageKey, next);
     mapRef.current?.setFeatureState(
       { source: SOURCE_ID, id },
       { checked: nowChecked },
     );
     const sync = popupSyncRef.current;
     if (sync && sync.id === id) sync.render(nowChecked);
+    // Persist (localStorage in local mode, or PATCH+broadcast when synced).
+    commitRef.current({ kind: "checked", action: nowChecked ? "add" : "remove", ids: [id] });
     return nowChecked;
   });
 
@@ -373,10 +573,80 @@ export default function MapTracker({
     }
     checkedRef.current = next;
     setChecked(next);
-    saveIdSet(storageKey, next);
     const sync = popupSyncRef.current;
     if (sync && ids.includes(sync.id)) sync.render(value);
+    commitRef.current({ kind: "checked", action: value ? "add" : "remove", ids });
   });
+
+  // Track the device's selected profile (sticky, shared with the home index).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setProfileId(getSelectedProfile());
+    return onProfileChange(setProfileId);
+  }, []);
+
+  // Live sync for a server profile: stream snapshots + ops over SSE, and
+  // reconnect gracefully. A dropped connection is a non-event — EventSource
+  // retries on its own; we only recreate it (with backoff) if it gives up.
+  useEffect(() => {
+    // In local mode there's no stream; syncStatus is unused (the switcher is
+    // passed null), so nothing to do here.
+    if (!synced) return;
+    let closed = false;
+    let es: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let backoff = 1000;
+    const url = `/api/profiles/${profileId}/maps/${game}/${mapSlug}/stream?clientId=${clientIdRef.current}`;
+
+    const open = () => {
+      es = new EventSource(url);
+      es.onopen = () => {
+        setSyncStatus("synced");
+        backoff = 1000;
+        void flushPending();
+      };
+      es.addEventListener("snapshot", (e) => {
+        const snap: MapStateSnapshot = JSON.parse((e as MessageEvent).data);
+        applySnapshot(snap);
+        setSyncStatus("synced");
+        void flushPending();
+        maybeOfferImport(snap);
+      });
+      es.addEventListener("op", (e) => {
+        const { op, originClientId } = JSON.parse((e as MessageEvent).data) as {
+          op: SyncOp;
+          originClientId?: string;
+        };
+        if (originClientId === clientIdRef.current) return; // ignore our own echo
+        applyOpLocal(op);
+      });
+      es.onerror = () => {
+        if (es && es.readyState === EventSource.CLOSED) {
+          // Gave up — recreate with capped exponential backoff.
+          setSyncStatus("offline");
+          es = null;
+          if (!closed) {
+            reconnectTimer = setTimeout(() => {
+              if (!closed) open();
+            }, backoff);
+            backoff = Math.min(backoff * 2, 15_000);
+          }
+        } else {
+          // Transient: EventSource is reconnecting itself.
+          setSyncStatus("connecting");
+        }
+      };
+    };
+    open();
+
+    return () => {
+      closed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      es?.close();
+    };
+    // Handlers are stable in behavior; re-subscribing only on the channel keys.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [synced, profileId, game, mapSlug]);
 
   // Initialize the map once.
   useEffect(() => {
@@ -384,8 +654,9 @@ export default function MapTracker({
 
     installDecodeDebug(); // diagnostic: trace intermittent tile decode failures
 
-    checkedRef.current = loadIdSet(storageKey);
-    setChecked(checkedRef.current);
+    // checkedRef is populated by the hydration / sync effects (localStorage in
+    // local mode, the SSE snapshot when synced); the on-load apply below paints
+    // whatever it holds by then.
 
     const { mapConfig } = data;
     // Padded bounds were computed at ingest time and keep the camera (and tile
@@ -868,7 +1139,10 @@ export default function MapTracker({
       >
         <span
           className={styles.catTitle}
-          onClick={() => jumpToRef.current?.(l.id)}
+          onClick={() => {
+            jumpToRef.current?.(l.id);
+            setSidebarOpen(false); // mobile: reveal the map after picking
+          }}
           style={{ cursor: "pointer" }}
           title="Fly to marker"
         >
@@ -897,8 +1171,40 @@ export default function MapTracker({
 
   return (
     <div className={styles.shell}>
-      <aside className={styles.sidebar}>
+      {/* Mobile-only: floating button to open the sidebar drawer. Hidden on
+          desktop via CSS (the sidebar is always visible there). */}
+      <button
+        type="button"
+        className={styles.menuBtn}
+        onClick={() => setSidebarOpen(true)}
+        aria-label="Open marker list"
+      >
+        <span />
+        <span />
+        <span />
+      </button>
+
+      {/* Backdrop behind the open drawer; tap to dismiss. */}
+      {sidebarOpen && (
+        <div
+          className={styles.backdrop}
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <aside
+        className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ""}`}
+      >
         <div className={styles.sidebarHeader}>
+          {/* Mobile-only close button for the drawer. */}
+          <button
+            type="button"
+            className={styles.closeBtn}
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Close marker list"
+          >
+            ×
+          </button>
           <h1>
             {/* Plain anchor (not next/link) so the #<game> fragment is applied
                 on the index and its section gets :target focus + scroll. */}
@@ -914,6 +1220,25 @@ export default function MapTracker({
               <div className={styles.barFill} style={{ width: `${pct}%` }} />
             </div>
           </div>
+
+          {/* Sync profile picker + live connection status. */}
+          <div className={styles.profileRow}>
+            <ProfileSwitcher status={synced ? syncStatus : null} />
+          </div>
+          {importPrompt && (
+            <div className={styles.importBanner}>
+              <span>Import this device&apos;s progress into this profile?</span>
+              <div className={styles.importBtns}>
+                <button type="button" className={styles.importYes} onClick={importLocalProgress}>
+                  Import
+                </button>
+                <button type="button" className={styles.importNo} onClick={dismissImport}>
+                  Not now
+                </button>
+              </div>
+            </div>
+          )}
+
           <button
             type="button"
             className={styles.optionToggle}

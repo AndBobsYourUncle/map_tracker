@@ -1,6 +1,9 @@
 .shell {
   display: flex;
   height: 100vh;
+  /* dvh tracks the *visible* viewport as mobile browser chrome shows/hides, so
+     the map and sidebar aren't cut off behind the address bar. */
+  height: 100dvh;
   width: 100vw;
   overflow: hidden;
   color: #e7e5ea;
@@ -16,6 +19,62 @@
   border-right: 1px solid #2c2838;
   display: flex;
   flex-direction: column;
+}
+
+/* Mobile-only chrome: a hamburger button to open the drawer, a close (×)
+   button inside it, and the dimming backdrop. All hidden on desktop. */
+.menuBtn,
+.closeBtn,
+.backdrop {
+  display: none;
+}
+
+.menuBtn {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 15;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid #2c2838;
+  border-radius: 8px;
+  background: rgba(28, 25, 38, 0.92);
+  cursor: pointer;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.menuBtn span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 1px;
+  background: #e7e5ea;
+}
+
+.closeBtn {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: #2c2838;
+  color: #e7e5ea;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 18;
+  background: rgba(0, 0, 0, 0.5);
 }
 
 .sidebarHeader {
@@ -57,6 +116,46 @@
   margin-top: 10px;
   font-size: 12px;
   color: #9b95a8;
+}
+
+/* Sync profile picker + live connection status. */
+.profileRow {
+  margin-top: 12px;
+}
+
+/* One-time prompt to import this device's local progress into a new profile. */
+.importBanner {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 6px;
+  background: #241f30;
+  border: 1px solid #3a3548;
+  font-size: 12px;
+  color: #c5c0d0;
+}
+.importBtns {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.importYes {
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: #6c5ce7;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.importNo {
+  padding: 5px 10px;
+  font-size: 12px;
+  color: #c5c0d0;
+  background: none;
+  border: 1px solid #3a3548;
+  border-radius: 6px;
+  cursor: pointer;
 }
 
 /* Top-level "hide completed" switch in the sidebar header. */
@@ -613,4 +712,51 @@
 .popupBtn.checked {
   background: #2c2838;
   color: #4caf80;
+}
+
+/* ── Mobile: sidebar becomes an off-canvas drawer over a full-width map ── */
+@media (max-width: 768px) {
+  .menuBtn {
+    display: flex;
+  }
+  .closeBtn {
+    display: block;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 20;
+    width: 86vw;
+    max-width: 340px;
+    /* Off-screen until opened; slide in on .sidebarOpen. */
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 2px 0 24px rgba(0, 0, 0, 0.5);
+  }
+  .sidebar.sidebarOpen {
+    transform: translateX(0);
+  }
+  .backdrop.backdrop {
+    /* doubled selector to win specificity over the base `display: none` */
+    display: block;
+  }
+
+  /* Map fills the whole screen; the drawer floats above it. */
+  .mapWrap {
+    width: 100%;
+  }
+
+  /* Keep popups and the lightbox within a small screen. */
+  :global(.maplibregl-popup-content) {
+    max-width: 78vw;
+  }
+  .popupDesc {
+    max-width: 70vw;
+  }
+  .lightbox {
+    padding: 16px;
+  }
 }

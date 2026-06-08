@@ -41,3 +41,27 @@ export function safeMapsJoin(parts: string[]): string | null {
   if (full !== root && !full.startsWith(root + path.sep)) return null;
   return full;
 }
+
+// Root holding per-profile synced tracker state:
+//   profiles.json                       (the registry)
+//   <profileId>/state/<game>/<map>.json (one profile's progress for one map)
+export function profilesRoot(): string {
+  return path.join(DATA_DIR, "profiles");
+}
+
+export function profilesFile(): string {
+  return path.join(profilesRoot(), "profiles.json");
+}
+
+// Join URL path segments under profilesRoot(), rejecting traversal — same guard
+// as safeMapsJoin but rooted at the profiles subtree. Used to build a profile's
+// state file path from untrusted route params (id/game/map).
+export function safeProfilesJoin(parts: string[]): string | null {
+  if (parts.some((p) => p.includes("..") || p.includes("\0") || path.isAbsolute(p))) {
+    return null;
+  }
+  const full = path.join(profilesRoot(), ...parts);
+  const root = profilesRoot();
+  if (full !== root && !full.startsWith(root + path.sep)) return null;
+  return full;
+}

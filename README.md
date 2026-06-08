@@ -69,6 +69,36 @@ scripts/sync-data.sh               # one-time: rsync your local maps onto the VM
 After that, new maps can be ingested directly from the UI on the server. See
 `deploy.env.example` for all options (data dir path, sudo, target platform).
 
+## Multi-device sync
+
+By default, your progress lives only in the browser (`localStorage`) under the
+**"Local (this device)"** profile — nothing leaves the machine. To sync across
+devices (e.g. phone + desktop), pick a **named profile** from the dropdown in the
+sidebar (or on the home page) and use the same profile on each device:
+
+- Progress, marker visibility, "exclude from count" stars, and the "hide
+  completed" toggle all sync. A device's changes appear on the others **live**,
+  pushed over [Server-Sent Events](https://developer.mozilla.org/docs/Web/API/Server-sent_events)
+  — no refresh needed. A small dot shows the connection state (Synced /
+  Reconnecting… / Offline).
+- The first time you switch a device to a fresh profile, it offers to **import**
+  that device's existing local progress.
+- Profiles are open (no password) — fitting for a LAN-only deploy. Profile state
+  is stored as JSON under the data volume (`<DATA_DIR>/profiles/`), so it persists
+  across redeploys just like map data.
+
+There's **no auth**, so keep this behind your trusted network (don't expose the
+sync endpoints to the public internet without adding your own auth layer).
+
+### Behind a reverse proxy
+
+SSE is a long-lived response, so the only proxy requirement is **generous idle
+timeouts** on the route (a 15s heartbeat keeps the connection warm) and **no
+response compression** on the stream. For HAProxy: set the backend's *Server
+Timeout* and the frontend's *Client Timeout* to something like `1h`. The app
+already sends `Cache-Control: no-cache` and `X-Accel-Buffering: no` (the latter
+disables nginx buffering; harmless to HAProxy).
+
 ## Project layout
 
 ```
@@ -76,10 +106,16 @@ app/                     Next.js App Router (UI + API routes)
   api/tiles/             serves map tiles from the data dir
   api/asset/             serves marker media from the data dir
   api/maps/ingest/       start/poll a UI-triggered ingest
+  api/profiles/          sync: profile registry + per-map state + SSE stream
+  ProfileSwitcher.tsx    sync profile dropdown (sidebar + home page)
 lib/
   paths.ts               resolves the data dir (MAP_TRACKER_DATA_DIR)
   ingest.mjs             the scraper core (also importable by the API)
   ingestJobs.ts          in-memory ingest job registry
+  profileStore.ts        server-side synced state (durable JSON + cache)
+  syncBus.ts             in-memory SSE pub/sub (broadcasts ops to devices)
+  syncTypes.ts           shared op/snapshot types (server + client)
+  profile.ts             client-side selected-profile helper
 scripts/
   ingest.mjs             CLI wrapper around lib/ingest.mjs
   deploy.sh              build + ship + run on a VM

@@ -5,8 +5,10 @@
 #
 #   scripts/deploy.sh
 #
-# Config comes from deploy.env (see deploy.env.example). The container's app
-# user is uid/gid 1001, so the data dir is chowned to 1001:1001 on the VM.
+# Config comes from deploy.env (see deploy.env.example). The container runs as
+# the remote SSH user's uid/gid (discovered below) and the data dir is owned by
+# that user, so no chown to a foreign uid — and no sudo — is needed unless
+# VM_DATA_DIR is a root-owned path (then set USE_SUDO=1).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -33,19 +35,27 @@ docker build --platform "${PLATFORM}" -t "${IMAGE}" .
 echo "==> Shipping image to ${SSH} (docker save | ssh | docker load)"
 docker save "${IMAGE}" | gzip | ssh "${SSH}" "gunzip | docker load"
 
-echo "==> Preparing remote dirs on ${SSH}"
+# The container will run as this uid/gid so it can write the bind mount.
+read -r RUID RGID < <(ssh "${SSH}" 'echo "$(id -u) $(id -g)"')
+
+echo "==> Preparing remote dirs on ${SSH} (owner ${RUID}:${RGID})"
 # -t allocates a TTY so a sudo password prompt works (harmless if sudo is
-# passwordless or USE_SUDO is unset).
+# passwordless or USE_SUDO is unset). With a user-owned VM_DATA_DIR, SUDO is
+# empty and the chown is a no-op on the user's own files (no prompt).
 ssh -t "${SSH}" "
   set -e
   mkdir -p '${REMOTE_DIR}'
   ${SUDO} mkdir -p '${VM_DATA_DIR}/maps'
-  ${SUDO} chown -R 1001:1001 '${VM_DATA_DIR}'
+  ${SUDO} chown -R ${RUID}:${RGID} '${VM_DATA_DIR}'
 "
 
 echo "==> Uploading compose.yaml + .env"
 scp compose.yaml "${SSH}:${REMOTE_DIR}/compose.yaml"
-ssh "${SSH}" "printf 'MAP_TRACKER_HOST_DATA=%s\n' '${VM_DATA_DIR}' > '${REMOTE_DIR}/.env'"
+ssh "${SSH}" "{
+  printf 'MAP_TRACKER_HOST_DATA=%s\n' '${VM_DATA_DIR}'
+  printf 'MAP_TRACKER_UID=%s\n' '${RUID}'
+  printf 'MAP_TRACKER_GID=%s\n' '${RGID}'
+} > '${REMOTE_DIR}/.env'"
 
 echo "==> Starting service"
 ssh "${SSH}" "cd '${REMOTE_DIR}' && docker compose up -d && docker compose ps"

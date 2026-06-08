@@ -184,6 +184,13 @@ export default function MapTracker({
   // Mobile only: whether the sidebar drawer is open. On desktop the sidebar is
   // always visible and this flag is ignored (see the CSS media query).
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Mobile drawer drag: the left-edge open strip, the drawer itself, and the
+  // backdrop (all driven by native non-passive listeners), plus a ref mirror of
+  // sidebarOpen so those listeners can read the latest value.
+  const edgeRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const sidebarOpenRef = useRef(false);
 
   // ── Multi-device sync ──────────────────────────────────────────────────
   // The selected sync profile (sticky per device). "local" = today's
@@ -805,6 +812,15 @@ export default function MapTracker({
 
       let activePopup: maplibregl.Popup | null = null;
 
+      // Below this zoom the map is too far out for an open popup to make sense
+      // (it floats over a tiny patch), so we hide it until the user zooms back
+      // in. A couple levels below the deepest zoom, but never below near-min.
+      const popupHideBelow = Math.max(map.getMinZoom() + 1, map.getMaxZoom() - 3);
+      const syncPopupVisibility = () => {
+        const el = activePopup?.getElement();
+        if (el) el.style.visibility = map.getZoom() < popupHideBelow ? "hidden" : "";
+      };
+
       // Draw lines from `loc` to each marker its description references (or clear
       // them when loc is null). Targets that don't exist are skipped.
       function setConnections(loc: MapLocation | null) {
@@ -836,6 +852,7 @@ export default function MapTracker({
       // in sync so its tip stays pinned to the top of the marker while zooming.
       map.on("zoom", () => {
         activePopup?.setOffset(pinPixelHeight(map.getZoom()));
+        syncPopupVisibility();
       });
 
       // Reflect the open marker in the URL (?locationIds=<id>) so it can be
@@ -941,11 +958,17 @@ export default function MapTracker({
         popupSyncRef.current = { id: loc.id, render: renderBtn };
 
         // Offset the popup up by the pin's height so its tip points at the top
-        // of the marker rather than into its middle.
+        // of the marker rather than into its middle. On mobile we pin a fixed
+        // anchor: without one MapLibre re-picks the anchor as the map moves,
+        // which makes the popup jump around distractingly on a small screen.
+        const isMobile =
+          typeof window !== "undefined" &&
+          window.matchMedia("(max-width: 768px)").matches;
         const popup = new maplibregl.Popup({
           closeButton: true,
           offset: pinPixelHeight(atZoom),
           maxWidth: "500px",
+          ...(isMobile ? { anchor: "bottom" as const } : {}),
         })
           .setLngLat([loc.lng, loc.lat])
           .setDOMContent(el);
@@ -963,6 +986,7 @@ export default function MapTracker({
         activePopup?.remove();
         activePopup = popup;
         popup.addTo(map);
+        syncPopupVisibility(); // respect the zoom-out hide threshold on open
         setMarkerInUrl(loc.id);
         setConnections(loc);
       }
@@ -1169,8 +1193,167 @@ export default function MapTracker({
     );
   }
 
+  // Keep a ref mirror of sidebarOpen for the native touch listeners (which are
+  // attached once and would otherwise capture a stale value).
+  useEffect(() => {
+    sidebarOpenRef.current = sidebarOpen;
+  }, [sidebarOpen]);
+
+  // Interactive drawer drag (mobile): the sidebar tracks the finger as you swipe
+  // it open from the left-edge strip or closed from on the drawer, then animates
+  // to the nearest resting state on release. Listeners are native + NON-passive
+  // so preventDefault() can both own the gesture and suppress iOS Safari's edge
+  // swipe-back. Transforms are written straight to the DOM (no per-frame React
+  // re-render); state updates once, on release.
+  useEffect(() => {
+    const edge = edgeRef.current;
+    const drawer = sidebarRef.current;
+    if (!edge || !drawer) return;
+
+    let mode: "open" | "close" | null = null;
+    let axis: "none" | "x" | "y" = "none";
+    let startX = 0;
+    let startY = 0;
+    let width = 300;
+    let tx = 0;
+
+    // Live-track: translate the drawer and fade the backdrop with the finger.
+    const apply = (x: number) => {
+      tx = Math.min(0, Math.max(-width, x));
+      drawer.style.transition = "none";
+      drawer.style.transform = `translateX(${tx}px)`;
+      const bd = backdropRef.current;
+      if (bd) {
+        bd.style.transition = "none";
+        bd.style.opacity = String((tx + width) / width);
+        bd.style.pointerEvents = "none";
+      }
+    };
+
+    // Release: animate to the chosen rest state, then hand control back to the
+    // CSS classes once the transition completes (inline target == class target,
+    // so clearing the inline styles causes no visual jump).
+    const settle = (open: boolean) => {
+      drawer.style.transition = "";
+      drawer.style.transform = open ? "translateX(0)" : "translateX(-100%)";
+      const bd = backdropRef.current;
+      if (bd) {
+        bd.style.transition = "";
+        bd.style.opacity = open ? "1" : "0";
+        bd.style.pointerEvents = open ? "auto" : "none";
+      }
+      setSidebarOpen(open);
+      window.setTimeout(() => {
+        drawer.style.transform = "";
+        drawer.style.transition = "";
+        if (bd) {
+          bd.style.opacity = "";
+          bd.style.pointerEvents = "";
+          bd.style.transition = "";
+        }
+      }, 240);
+    };
+
+    // Returns the dominant axis once the finger has moved enough to tell, else
+    // null. Returning it (rather than mutating `axis` in place) keeps TS's
+    // control-flow narrowing accurate at the call sites.
+    const decideAxis = (dx: number, dy: number): "x" | "y" | null => {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return null;
+      return Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
+    };
+    const reset = () => {
+      mode = null;
+      axis = "none";
+    };
+
+    // ── Open: swipe right from the left-edge strip ──
+    const edgeStart = (e: TouchEvent) => {
+      if (sidebarOpenRef.current) return;
+      mode = "open";
+      axis = "none";
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      width = drawer.offsetWidth || 300;
+      tx = -width;
+      e.preventDefault(); // claim the edge gesture from the browser
+    };
+    const edgeMove = (e: TouchEvent) => {
+      if (mode !== "open") return;
+      const dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+      if (axis === "none") {
+        const a = decideAxis(dx, dy);
+        if (!a) return;
+        axis = a;
+      }
+      if (axis !== "x") return;
+      e.preventDefault();
+      apply(-width + dx);
+    };
+    const edgeEnd = () => {
+      if (mode === "open" && axis === "x") settle(tx > -width * 0.6);
+      reset();
+    };
+
+    // ── Close: drag left on the open drawer ──
+    const drawerStart = (e: TouchEvent) => {
+      if (!sidebarOpenRef.current) return;
+      mode = "close";
+      axis = "none";
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      width = drawer.offsetWidth || 300;
+      tx = 0;
+    };
+    const drawerMove = (e: TouchEvent) => {
+      if (mode !== "close") return;
+      const dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+      if (axis === "none") {
+        const a = decideAxis(dx, dy);
+        if (!a) return;
+        axis = a;
+        if (axis === "y") {
+          mode = null; // a vertical gesture — let the list scroll
+          return;
+        }
+      }
+      if (axis !== "x") return;
+      e.preventDefault();
+      apply(dx);
+    };
+    const drawerEnd = () => {
+      if (mode === "close" && axis === "x") settle(tx > -width * 0.4);
+      reset();
+    };
+
+    edge.addEventListener("touchstart", edgeStart, { passive: false });
+    edge.addEventListener("touchmove", edgeMove, { passive: false });
+    edge.addEventListener("touchend", edgeEnd);
+    edge.addEventListener("touchcancel", edgeEnd);
+    drawer.addEventListener("touchstart", drawerStart, { passive: true });
+    drawer.addEventListener("touchmove", drawerMove, { passive: false });
+    drawer.addEventListener("touchend", drawerEnd);
+    drawer.addEventListener("touchcancel", drawerEnd);
+    return () => {
+      edge.removeEventListener("touchstart", edgeStart);
+      edge.removeEventListener("touchmove", edgeMove);
+      edge.removeEventListener("touchend", edgeEnd);
+      edge.removeEventListener("touchcancel", edgeEnd);
+      drawer.removeEventListener("touchstart", drawerStart);
+      drawer.removeEventListener("touchmove", drawerMove);
+      drawer.removeEventListener("touchend", drawerEnd);
+      drawer.removeEventListener("touchcancel", drawerEnd);
+    };
+  }, []);
+
   return (
     <div className={styles.shell}>
+      {/* Mobile-only: thin left-edge zone to swipe the drawer open (hidden on
+          desktop via CSS). When the drawer is open it sits under it. Gesture
+          handling is wired up natively in the effect above. */}
+      <div ref={edgeRef} className={styles.edgeSwipe} />
+
       {/* Mobile-only: floating button to open the sidebar drawer. Hidden on
           desktop via CSS (the sidebar is always visible there). */}
       <button
@@ -1184,15 +1367,16 @@ export default function MapTracker({
         <span />
       </button>
 
-      {/* Backdrop behind the open drawer; tap to dismiss. */}
-      {sidebarOpen && (
-        <div
-          className={styles.backdrop}
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+      {/* Backdrop behind the open drawer; tap to dismiss. Always mounted (so its
+          opacity can be faded during a drag); CSS hides it on desktop. */}
+      <div
+        ref={backdropRef}
+        className={`${styles.backdrop} ${sidebarOpen ? styles.backdropOpen : ""}`}
+        onClick={() => setSidebarOpen(false)}
+      />
 
       <aside
+        ref={sidebarRef}
         className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ""}`}
       >
         <div className={styles.sidebarHeader}>

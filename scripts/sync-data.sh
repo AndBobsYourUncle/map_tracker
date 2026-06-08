@@ -5,9 +5,10 @@
 #
 #   scripts/sync-data.sh
 #
-# Config comes from deploy.env (see deploy.env.example). The remote data dir is
-# owned by uid 1001 (the container user); with USE_SUDO=1 the remote rsync runs
-# under sudo so it can write there.
+# Config comes from deploy.env (see deploy.env.example). The data dir is owned
+# by the remote SSH user (the container runs as that uid too), so rsync writes
+# directly. Only with USE_SUDO=1 (a root-owned VM_DATA_DIR) does the remote
+# rsync/chown run under sudo.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -30,18 +31,21 @@ if [[ ! -d "${LOCAL_DATA_DIR}/maps" ]]; then
   exit 1
 fi
 
+# The container runs as the remote SSH user, so own the maps as that uid/gid.
+read -r RUID RGID < <(ssh "${SSH}" 'echo "$(id -u) $(id -g)"')
+
 RSYNC_PATH_OPT=()
-CHOWN_CMD="true"
+SUDO=""
 if [[ -n "${USE_SUDO:-}" ]]; then
   RSYNC_PATH_OPT=(--rsync-path="sudo rsync")
-  CHOWN_CMD="sudo chown -R 1001:1001 '${VM_DATA_DIR}/maps'"
+  SUDO="sudo"
 fi
 
 echo "==> Syncing ${LOCAL_DATA_DIR}/maps/ -> ${SSH}:${VM_DATA_DIR}/maps/"
 rsync -az --info=progress2 "${RSYNC_PATH_OPT[@]}" \
   "${LOCAL_DATA_DIR}/maps/" "${SSH}:${VM_DATA_DIR}/maps/"
 
-echo "==> Fixing ownership to the container user (uid 1001)"
-ssh -t "${SSH}" "${CHOWN_CMD}"
+echo "==> Fixing ownership to the container user (${RUID}:${RGID})"
+ssh -t "${SSH}" "${SUDO} chown -R ${RUID}:${RGID} '${VM_DATA_DIR}/maps'"
 
 echo "==> Done. Reload the app and the synced maps should appear."

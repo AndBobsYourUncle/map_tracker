@@ -25,7 +25,8 @@
    button inside it, and the dimming backdrop. All hidden on desktop. */
 .menuBtn,
 .closeBtn,
-.backdrop {
+.backdrop,
+.edgeSwipe {
   display: none;
 }
 
@@ -33,7 +34,8 @@
   position: absolute;
   top: 12px;
   left: 12px;
-  z-index: 15;
+  /* Above the edge-swipe strip so taps on the hamburger still register. */
+  z-index: 17;
   width: 40px;
   height: 40px;
   padding: 0;
@@ -722,6 +724,19 @@
   .closeBtn {
     display: block;
   }
+  /* Thin left-edge zone that captures a swipe-right to open the drawer. Sits
+     above the map but below the backdrop/drawer. */
+  .edgeSwipe {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 24px;
+    z-index: 16;
+    /* Stop the browser from claiming the edge swipe as a back-navigation. */
+    touch-action: none;
+  }
 
   .sidebar {
     position: fixed;
@@ -740,8 +755,17 @@
     transform: translateX(0);
   }
   .backdrop.backdrop {
-    /* doubled selector to win specificity over the base `display: none` */
+    /* doubled selector to win specificity over the base `display: none`.
+       Always present (so a drag can fade it), but invisible + click-through
+       until opened. */
     display: block;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+  }
+  .backdrop.backdropOpen {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   /* Map fills the whole screen; the drawer floats above it. */

@@ -6,6 +6,10 @@ services:
     image: map-tracker:latest
     container_name: map-tracker
     restart: unless-stopped
+    # Run as the host user that owns the bind mount (set by deploy.sh via .env),
+    # so the data dir needs no chown to a foreign uid — and thus no sudo. Falls
+    # back to the image's built-in user (1001) if unset.
+    user: "${MAP_TRACKER_UID:-1001}:${MAP_TRACKER_GID:-1001}"
     ports:
       - "3000:3000"
     environment:

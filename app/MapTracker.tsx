@@ -1058,40 +1058,81 @@ export default function MapTracker({
     map.fitBounds([w, s, e, n], { padding: 48, maxZoom: 14, duration: 800 });
   }
 
-  function toggleRegionExpand(regionId: number) {
+  // After expanding a sidebar section near the bottom, reveal the rows that just
+  // appeared. We scroll down by exactly how much of the expanded block is cut off
+  // below the fold — but never so far that the header would scroll above the top
+  // (so it's bounded by the content and can't overshoot). Mobile only; a no-op
+  // when the block is already fully visible. The double rAF waits for the new
+  // rows to lay out before measuring.
+  function revealOnExpand(e: { currentTarget: HTMLElement }) {
+    const container = sidebarRef.current;
+    if (!container) return;
+    if (!window.matchMedia("(max-width: 768px)").matches) return;
+    const header = e.currentTarget.closest<HTMLElement>(
+      `.${styles.category}, .${styles.groupTitle}`,
+    );
+    if (!header) return;
+    // Measure AFTER React renders the expanded rows — the block doesn't exist
+    // yet at click time, so read it (and measure) inside the rAF.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const block = header.nextElementSibling as HTMLElement | null;
+        if (!block) return;
+        const cRect = container.getBoundingClientRect();
+        const belowFold = block.getBoundingClientRect().bottom - cRect.bottom;
+        if (belowFold <= 0) return; // already fully visible
+        const maxScroll = header.getBoundingClientRect().top - cRect.top; // keep header on screen
+        const delta = Math.min(belowFold + 8, Math.max(0, maxScroll));
+        if (delta > 4) container.scrollBy({ top: delta, behavior: "smooth" });
+      }),
+    );
+  }
+
+  function toggleRegionExpand(regionId: number, e?: { currentTarget: HTMLElement }) {
+    const willOpen = !expandedRegions.has(regionId);
     setExpandedRegions((prev) => {
       const next = new Set(prev);
       if (next.has(regionId)) next.delete(regionId);
       else next.add(regionId);
       return next;
     });
+    if (willOpen && e) revealOnExpand(e);
   }
 
-  function toggleRegionCat(key: string) {
+  function toggleRegionCat(key: string, e?: { currentTarget: HTMLElement }) {
+    const willOpen = !expandedRegionCats.has(key);
     setExpandedRegionCats((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
     });
+    if (willOpen && e) revealOnExpand(e);
   }
 
-  function toggleCatExpand(catId: number) {
+  function toggleCatExpand(catId: number, e?: { currentTarget: HTMLElement }) {
+    const willOpen = !expandedCats.has(catId);
     setExpandedCats((prev) => {
       const next = new Set(prev);
       if (next.has(catId)) next.delete(catId);
       else next.add(catId);
       return next;
     });
+    if (willOpen && e) revealOnExpand(e);
   }
 
-  function setGroupCollapsed(groupId: number, collapsed: boolean) {
+  function setGroupCollapsed(
+    groupId: number,
+    collapsed: boolean,
+    e?: { currentTarget: HTMLElement },
+  ) {
     setCollapsedGroups((prev) => {
       const next = new Set(prev);
       if (collapsed) next.add(groupId);
       else next.delete(groupId);
       return next;
     });
+    if (!collapsed && e) revealOnExpand(e); // !collapsed == expanding
   }
 
   // Hide/show the whole group on the map, and collapse it when hidden / expand
@@ -1506,14 +1547,14 @@ export default function MapTracker({
                           <button
                             type="button"
                             className={styles.chevron}
-                            onClick={() => toggleRegionExpand(r.id)}
+                            onClick={(e) => toggleRegionExpand(r.id, e)}
                             aria-label={open ? "Collapse region" : "Expand region"}
                           >
                             {open ? "▾" : "▸"}
                           </button>
                           <span
                             className={styles.catTitle}
-                            onClick={() => toggleRegionExpand(r.id)}
+                            onClick={(e) => toggleRegionExpand(r.id, e)}
                             style={{ cursor: "pointer" }}
                             title={open ? "Collapse" : "Expand"}
                           >
@@ -1541,8 +1582,9 @@ export default function MapTracker({
                           </span>
                         </div>
 
-                        {open &&
-                          cats.map((cat) => {
+                        {open && (
+                          <div className={styles.expandBlock}>
+                          {cats.map((cat) => {
                             const locs = catMap!.get(cat)!;
                             const cFound = locs.filter((l) => checked.has(l.id)).length;
                             const cDone = locs.length > 0 && cFound === locs.length;
@@ -1554,7 +1596,7 @@ export default function MapTracker({
                                   <button
                                     type="button"
                                     className={styles.chevron}
-                                    onClick={() => toggleRegionCat(ckey)}
+                                    onClick={(e) => toggleRegionCat(ckey, e)}
                                     aria-label={cOpen ? "Collapse" : "Expand"}
                                   >
                                     {cOpen ? "▾" : "▸"}
@@ -1565,7 +1607,7 @@ export default function MapTracker({
                                   />
                                   <span
                                     className={styles.catTitle}
-                                    onClick={() => toggleRegionCat(ckey)}
+                                    onClick={(e) => toggleRegionCat(ckey, e)}
                                     style={{ cursor: "pointer" }}
                                     title={cOpen ? "Collapse" : "Expand"}
                                   >
@@ -1584,13 +1626,18 @@ export default function MapTracker({
                                     />
                                   </span>
                                 </div>
-                                {cOpen &&
-                                  locs.map((l, i) =>
-                                    renderMarkerRow(l, l.title || `${catTitle.get(cat)} ${i + 1}`),
-                                  )}
+                                {cOpen && (
+                                  <div className={styles.expandBlock}>
+                                    {locs.map((l, i) =>
+                                      renderMarkerRow(l, l.title || `${catTitle.get(cat)} ${i + 1}`),
+                                    )}
+                                  </div>
+                                )}
                               </Fragment>
                             );
                           })}
+                          </div>
+                        )}
                       </Fragment>
                     );
                   })}
@@ -1661,7 +1708,7 @@ export default function MapTracker({
                         <button
                           type="button"
                           className={styles.chevron}
-                          onClick={() => toggleCatExpand(c.id)}
+                          onClick={(e) => toggleCatExpand(c.id, e)}
                           aria-label={expanded ? "Collapse" : "Expand"}
                         >
                           {expanded ? "▾" : "▸"}
@@ -1669,7 +1716,7 @@ export default function MapTracker({
                         <IconChip color={g.color} slug={c.icon ?? undefined} />
                         <span
                           className={styles.catTitle}
-                          onClick={() => toggleCatExpand(c.id)}
+                          onClick={(e) => toggleCatExpand(c.id, e)}
                           style={{ cursor: "pointer" }}
                           title={expanded ? "Collapse" : "Expand"}
                         >
@@ -1697,8 +1744,9 @@ export default function MapTracker({
                           />
                         </span>
                       </div>
-                      {expanded &&
-                        (() => {
+                      {expanded && (
+                        <div className={styles.expandBlock}>
+                        {(() => {
                           // Group markers by region (one group per region), then
                           // order groups by region order, falling back to title
                           // (this map's regions all share one order value).
@@ -1727,6 +1775,8 @@ export default function MapTracker({
                             </Fragment>
                           ));
                         })()}
+                        </div>
+                      )}
                     </Fragment>
                   );
                 })
@@ -1739,7 +1789,7 @@ export default function MapTracker({
                     <button
                       type="button"
                       className={styles.chevron}
-                      onClick={() => setGroupCollapsed(g.id, groupExpanded)}
+                      onClick={(e) => setGroupCollapsed(g.id, groupExpanded, e)}
                       aria-label={groupExpanded ? "Collapse" : "Expand"}
                     >
                       {groupExpanded ? "▾" : "▸"}
@@ -1747,7 +1797,7 @@ export default function MapTracker({
                     <span className={styles.swatch} style={{ background: g.color }} />
                     <span
                       className={styles.groupName}
-                      onClick={() => setGroupCollapsed(g.id, groupExpanded)}
+                      onClick={(e) => setGroupCollapsed(g.id, groupExpanded, e)}
                       style={{ cursor: "pointer" }}
                       title={groupExpanded ? "Collapse" : "Expand"}
                     >
@@ -1772,7 +1822,7 @@ export default function MapTracker({
                       />
                     </span>
                   </div>
-                  {groupExpanded && catNodes}
+                  {groupExpanded && <div className={styles.expandBlock}>{catNodes}</div>}
                 </div>
               );
             })

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import ProfileSwitcher from "./ProfileSwitcher";
+import { LOCAL_PROFILE, getSelectedProfile, onProfileChange } from "@/lib/profile";
 import styles from "./MapIndex.module.css";
 
 export interface MapEntry {
@@ -39,7 +40,17 @@ interface Job {
   error?: string;
 }
 
-function readStat(m: MapEntry): Stat {
+// Compute a card's progress from the raw checked/untracked id lists, however
+// they were sourced (localStorage for "Local", or the server for a profile).
+function statFromArrays(m: MapEntry, checked: number[], untrackedArr: number[]): Stat {
+  const untracked = new Set(untrackedArr);
+  const trackedTotal = Math.max(0, m.markers - untracked.size);
+  const found = checked.filter((id) => !untracked.has(id)).length;
+  const pct = trackedTotal > 0 ? Math.round((found / trackedTotal) * 100) : 0;
+  return { found, trackedTotal, untracked: untracked.size, pct };
+}
+
+function readLocalStat(m: MapEntry): Stat {
   const base = `map-tracker:${m.game}:${m.map}`;
   const parse = (k: string): number[] => {
     try {
@@ -48,13 +59,23 @@ function readStat(m: MapEntry): Stat {
       return [];
     }
   };
-  const checked = parse("checked");
-  const untrackedArr = parse("untrackedLocs");
-  const untracked = new Set(untrackedArr);
-  const trackedTotal = Math.max(0, m.markers - untracked.size);
-  const found = checked.filter((id) => !untracked.has(id)).length;
-  const pct = trackedTotal > 0 ? Math.round((found / trackedTotal) * 100) : 0;
-  return { found, trackedTotal, untracked: untracked.size, pct };
+  return statFromArrays(m, parse("checked"), parse("untrackedLocs"));
+}
+
+// Fetch a map's server-side state for the selected profile. Returns null if the
+// profile/map has no state yet (treated as empty progress by the caller).
+async function fetchServerStat(profileId: string, m: MapEntry): Promise<Stat> {
+  try {
+    const res = await fetch(
+      `/api/profiles/${profileId}/maps/${m.game}/${m.map}`,
+      { cache: "no-store" },
+    );
+    if (!res.ok) return statFromArrays(m, [], []);
+    const { state } = await res.json();
+    return statFromArrays(m, state?.checked ?? [], state?.untrackedLocs ?? []);
+  } catch {
+    return statFromArrays(m, [], []);
+  }
 }
 
 // Form + live progress for importing a new map by URL. The scraper runs on the
@@ -172,18 +193,42 @@ function AddMap() {
 }
 
 export default function MapIndex({ games }: { games: GameGroup[] }) {
-  // localStorage is client-only, so progress is read after mount.
+  // Progress source depends on the selected profile: localStorage for "Local",
+  // the server otherwise. Read after mount (localStorage/profile are client-only)
+  // and recompute whenever the device switches profiles.
   const [stats, setStats] = useState<Record<string, Stat>>({});
+  const [profileId, setProfileId] = useState(LOCAL_PROFILE);
   useEffect(() => {
-    const s: Record<string, Stat> = {};
-    for (const g of games) {
-      for (const m of g.maps) s[`${m.game}/${m.map}`] = readStat(m);
+    setProfileId(getSelectedProfile());
+    return onProfileChange(setProfileId);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (profileId === LOCAL_PROFILE) {
+      const s: Record<string, Stat> = {};
+      for (const g of games) {
+        for (const m of g.maps) s[`${m.game}/${m.map}`] = readLocalStat(m);
+      }
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setStats(s);
+      return;
     }
-    // Intentional post-mount read: localStorage is unavailable during SSR, so
-    // progress can only be computed client-side after mount.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setStats(s);
-  }, [games]);
+    // Synced profile: pull each map's state from the server in parallel.
+    (async () => {
+      const maps = games.flatMap((g) => g.maps);
+      const results = await Promise.all(
+        maps.map((m) => fetchServerStat(profileId, m)),
+      );
+      if (cancelled) return;
+      const s: Record<string, Stat> = {};
+      maps.forEach((m, i) => (s[`${m.game}/${m.map}`] = results[i]));
+      setStats(s);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [games, profileId]);
 
   return (
     <main className={styles.main}>

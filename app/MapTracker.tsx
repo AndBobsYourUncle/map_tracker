@@ -2,7 +2,8 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
+// maplibre-gl.css is imported in app/layout.tsx (root global CSS) so its order
+// relative to this file's popup overrides stays stable across soft navigations.
 import { installDecodeDebug, attachMapErrorLogger } from "./mapDebug";
 import type { MapData, MapLocation } from "@/lib/types";
 import markerIcons from "@/lib/marker-icons.json";

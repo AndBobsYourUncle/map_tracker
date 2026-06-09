@@ -465,11 +465,24 @@
   flex: 1;
   position: relative;
   height: 100%;
+  /* A flex item with no explicit min-size won't shrink below its content; pin
+     it to 0 so the height comes purely from the stretched cross-size. */
+  min-width: 0;
+  min-height: 0;
 }
 
 .map {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  /* Use explicit width/height rather than `inset: 0`. WebKit fails to resolve
+     the height of an `inset: 0` absolutely-positioned child against a flex
+     parent on a client-side (soft) navigation — the map div comes up 0px tall
+     and stays blank until a full reload forces a relayout. An explicit 100%
+     resolves against the (definite) positioned ancestor and renders correctly
+     on soft nav too. */
+  width: 100%;
+  height: 100%;
 }
 
 .loading {

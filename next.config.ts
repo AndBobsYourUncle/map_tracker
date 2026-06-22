@@ -9,6 +9,12 @@ const nextConfig: NextConfig = {
   outputFileTracingExcludes: {
     "*": ["data/**", "**/data/**", "public/maps/**"],
   },
+  // The map page resolves marker icons (built-ins + user overrides) by reading
+  // Lucide's static SVGs at runtime. They're only read via fs (not imported),
+  // so the tracer can't see them — force them into the standalone bundle.
+  outputFileTracingIncludes: {
+    "/[game]/[map]": ["./node_modules/lucide-static/icons/**"],
+  },
 };
 
 export default nextConfig;

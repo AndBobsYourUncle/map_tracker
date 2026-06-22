@@ -12,8 +12,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { loadLucideIcon } from "../lib/markerIcons.mjs";
 
-const ICONS_DIR = path.join(process.cwd(), "node_modules", "lucide-static", "icons");
 const OUT = path.join(process.cwd(), "lib", "marker-icons.json");
 
 // slug -> lucide icon name (or null = no clean match)
@@ -60,24 +60,6 @@ const MAP = {
   newspaper: "newspaper",
 };
 
-// Slugs the app renders white on the colored marker; these get a slightly
-// heavier stroke so they read at small sizes.
-const STROKE = "#ffffff";
-const STROKE_WIDTH = "2.25";
-
-function loadSvg(name) {
-  const file = path.join(ICONS_DIR, `${name}.svg`);
-  let svg = fs.readFileSync(file, "utf8");
-  svg = svg
-    .replace(/<!--[\s\S]*?-->/g, "") // strip license comment
-    .replace(/\sclass="[^"]*"/, "")
-    .replace(/stroke="currentColor"/, `stroke="${STROKE}"`)
-    .replace(/stroke-width="[^"]*"/, `stroke-width="${STROKE_WIDTH}"`)
-    .replace(/\s*\n\s*/g, " ")
-    .trim();
-  return svg;
-}
-
 const icons = {};
 const missing = [];
 const unmatched = [];
@@ -87,11 +69,14 @@ for (const [slug, name] of Object.entries(MAP)) {
     unmatched.push(slug);
     continue;
   }
-  if (!fs.existsSync(path.join(ICONS_DIR, `${name}.svg`))) {
+  // loadLucideIcon applies the same normalization the runtime resolver uses,
+  // so baked built-ins and user-supplied icons render identically.
+  const svg = loadLucideIcon(name);
+  if (svg === null) {
     missing.push(`${slug} -> ${name}`);
     continue;
   }
-  icons[slug] = loadSvg(name);
+  icons[slug] = svg;
 }
 
 if (missing.length) {

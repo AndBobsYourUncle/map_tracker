@@ -6,7 +6,6 @@ import maplibregl from "maplibre-gl";
 // relative to this file's popup overrides stays stable across soft navigations.
 import { installDecodeDebug, attachMapErrorLogger } from "./mapDebug";
 import type { MapData, MapLocation } from "@/lib/types";
-import markerIcons from "@/lib/marker-icons.json";
 import {
   getSelectedProfile,
   LOCAL_PROFILE,
@@ -28,8 +27,6 @@ function referencedIds(desc?: string | null): number[] {
   const ids = [...desc.matchAll(/locationIds=(\d+)/g)].map((m) => Number(m[1]));
   return [...new Set(ids)];
 }
-
-const ICONS: Record<string, string> = markerIcons;
 
 // Rasterize a Lucide SVG string to an ImageBitmap for canvas compositing.
 async function svgToBitmap(svg: string, size: number): Promise<ImageBitmap> {
@@ -138,11 +135,16 @@ export default function MapTracker({
   data,
   game,
   map: mapSlug,
+  icons,
 }: {
   data: MapData;
   game: string;
   map: string;
+  // slug -> SVG string: built-ins plus any user overrides, resolved on the
+  // server (see app/[game]/[map]/page.tsx).
+  icons: Record<string, string>;
 }) {
+  const ICONS = icons;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const checkedRef = useRef<Set<number>>(new Set());
@@ -248,8 +250,8 @@ export default function MapTracker({
         color.set(c.id, g.color);
         title.set(c.id, c.title);
         order.set(c.id, c.order);
-        // Only map to an icon if we baked one for this slug; otherwise the
-        // marker stays a plain colored dot.
+        // Only map to an icon if we have one for this slug (built-in or a user
+        // override); otherwise the marker stays a plain colored dot.
         if (c.icon && ICONS[c.icon]) icon.set(c.id, c.icon);
       }
     }
@@ -291,7 +293,7 @@ export default function MapTracker({
       locById: byId,
       catToIcon: icon,
     };
-  }, [data]);
+  }, [data, ICONS]);
 
   const storageKey = `map-tracker:${game}:${mapSlug}:checked`;
   const hiddenLocsKey = `map-tracker:${game}:${mapSlug}:hiddenLocs`;
@@ -1017,7 +1019,7 @@ export default function MapTracker({
       mapRef.current = null;
       jumpToRef.current = null;
     };
-  }, [data, game, mapSlug, storageKey, catToGroupColor, catTitle, regionTitle, locById, catToIcon, locationsByCat]);
+  }, [data, game, mapSlug, storageKey, catToGroupColor, catTitle, regionTitle, locById, catToIcon, locationsByCat, ICONS]);
 
   // Sync visibility: visibility is per-marker now, so hide any marker whose id
   // is in hiddenLocs.
@@ -1608,6 +1610,7 @@ export default function MapTracker({
                                   <IconChip
                                     color={catToGroupColor.get(cat) ?? "#888888"}
                                     slug={catToIcon.get(cat)}
+                                    icons={ICONS}
                                   />
                                   <span
                                     className={styles.catTitle}
@@ -1717,7 +1720,7 @@ export default function MapTracker({
                         >
                           {expanded ? "▾" : "▸"}
                         </button>
-                        <IconChip color={g.color} slug={c.icon ?? undefined} />
+                        <IconChip color={g.color} slug={c.icon ?? undefined} icons={ICONS} />
                         <span
                           className={styles.catTitle}
                           onClick={(e) => toggleCatExpand(c.id, e)}
@@ -2016,8 +2019,16 @@ function JumpButton({ onClick, label }: { onClick: () => void; label: string }) 
 // A small sidebar chip mirroring the map pin: the category's group color with
 // its white icon, so the list correlates with the markers. Categories without a
 // baked icon fall back to a plain colored dot.
-function IconChip({ color, slug }: { color: string; slug?: string }) {
-  const svg = slug ? ICONS[slug] : undefined;
+function IconChip({
+  color,
+  slug,
+  icons,
+}: {
+  color: string;
+  slug?: string;
+  icons: Record<string, string>;
+}) {
+  const svg = slug ? icons[slug] : undefined;
   if (!svg) return <span className={styles.swatch} style={{ background: color }} />;
   return (
     <span

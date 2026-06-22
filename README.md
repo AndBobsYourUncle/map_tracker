@@ -99,6 +99,36 @@ Timeout* and the frontend's *Client Timeout* to something like `1h`. The app
 already sends `Cache-Control: no-cache` and `X-Accel-Buffering: no` (the latter
 disables nginx buffering; harmless to HAProxy).
 
+## Custom marker icons
+
+Each category renders with a small glyph (or a plain colored dot when it has no
+match). A built-in set of slug → [Lucide](https://lucide.dev) icon mappings is
+baked into `lib/marker-icons.json` at build time. You can add your own — e.g. to
+give a newly-imported game's categories proper icons — **without rebuilding** by
+dropping a file at `<DATA_DIR>/marker-icons.custom.json`:
+
+```json
+{
+  "grace": "flame",
+  "smithing_stone": "hammer",
+  "boss": "skull"
+}
+```
+
+- Keys are category **slugs** (see the `icon` field on categories in a map's
+  `data.json`); values are **Lucide icon names** (browse them at
+  [lucide.dev/icons](https://lucide.dev/icons)).
+- Your mappings layer **on top of** the built-ins — add a new slug or override
+  an existing one.
+- For a fully bespoke glyph, a value may instead be a raw `"<svg …>"` string
+  (24×24, `stroke="#ffffff"` to match the built-in style).
+- Unknown icon names, a missing file, or malformed JSON are ignored, so a bad
+  entry can't break the map. Edits apply on the next map load — no restart.
+
+The file lives on the data volume, so it persists across redeploys like map data
+and profiles. (The full Lucide icon set is bundled into the image, so name
+resolution stays fully local — no external requests.)
+
 ## Project layout
 
 ```
@@ -110,6 +140,7 @@ app/                     Next.js App Router (UI + API routes)
   ProfileSwitcher.tsx    sync profile dropdown (sidebar + home page)
 lib/
   paths.ts               resolves the data dir (MAP_TRACKER_DATA_DIR)
+  markerIcons.mjs        built-in + user-supplied category icon resolution
   ingest.mjs             the scraper core (also importable by the API)
   ingestJobs.ts          in-memory ingest job registry
   profileStore.ts        server-side synced state (durable JSON + cache)
